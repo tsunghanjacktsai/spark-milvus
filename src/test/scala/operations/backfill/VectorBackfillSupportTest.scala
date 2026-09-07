@@ -158,8 +158,8 @@ class VectorBackfillSupportTest
     ) shouldBe Array[Byte](0x1c, 0x2f, 0x1c, 0x33)
 
     val rounded = Array[Byte](0xcd.toByte, 0x34, 0x9a.toByte, 0x39)
-    FloatConverter.toFloat16Bytes(0.3f).toArray ++
-      FloatConverter.toFloat16Bytes(0.7f).toArray shouldBe rounded
+    FloatConverter.toFloat16Bytes(0.3f).toArray[Byte] ++
+      FloatConverter.toFloat16Bytes(0.7f).toArray[Byte] shouldBe rounded
     VectorBackfillSupport.encodeDenseJsonArray(
       "float16",
       MilvusDataType.Float16Vector,

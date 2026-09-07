@@ -1490,7 +1490,7 @@ object MilvusBackfill {
         val dataEnd = matchFlagIdx
         val targetFields = (2 until dataEnd)
           .map(i => row.get(i, targetSchema.fields(i - 2).dataType))
-          .toArray
+          .toArray[Any]
         if (targetFields.forall(_ == null)) nullRowCount += 1
         if (!row.isNullAt(matchFlagIdx)) matchedRowCount += 1
         if (readsSourceFields) {
@@ -1794,7 +1794,7 @@ object MilvusBackfill {
         val dataEnd = matchFlagIdx
         val values = (2 until dataEnd)
           .map(i => row.get(i, targetSchema.fields(i - 2).dataType))
-          .toArray
+          .toArray[Any]
         new org.apache.spark.sql.catalyst.expressions.GenericInternalRow(values)
       }
       def countMatch(row: InternalRow): Unit = {

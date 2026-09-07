@@ -831,8 +831,8 @@ class ArrowConverterTest extends AnyFunSuite with Matchers {
   }
 
   test("arrowToInternalRow decodes Float16Vector fixed-size bytes") {
-    val bytes = FloatConverter.toFloat16Bytes(1.5f).toArray ++
-      FloatConverter.toFloat16Bytes(-2.0f).toArray
+    val bytes = FloatConverter.toFloat16Bytes(1.5f).toArray[Byte] ++
+      FloatConverter.toFloat16Bytes(-2.0f).toArray[Byte]
     withFixedSizeBinaryRoot("float16", bytes.length, bytes) { root =>
       val row = ArrowConverter.arrowToInternalRow(
         root,
@@ -854,8 +854,8 @@ class ArrowConverterTest extends AnyFunSuite with Matchers {
   }
 
   test("arrowToInternalRow decodes BFloat16Vector fixed-size bytes") {
-    val bytes = FloatConverter.toBFloat16Bytes(1.5f).toArray ++
-      FloatConverter.toBFloat16Bytes(-2.0f).toArray
+    val bytes = FloatConverter.toBFloat16Bytes(1.5f).toArray[Byte] ++
+      FloatConverter.toBFloat16Bytes(-2.0f).toArray[Byte]
     withFixedSizeBinaryRoot("bfloat16", bytes.length, bytes) { root =>
       val row = ArrowConverter.arrowToInternalRow(
         root,
@@ -943,8 +943,8 @@ class ArrowConverterTest extends AnyFunSuite with Matchers {
   test(
     "Float16Vector fixed-size bytes without metadata fail instead of corrupting"
   ) {
-    val bytes = FloatConverter.toFloat16Bytes(1.5f).toArray ++
-      FloatConverter.toFloat16Bytes(-2.0f).toArray
+    val bytes = FloatConverter.toFloat16Bytes(1.5f).toArray[Byte] ++
+      FloatConverter.toFloat16Bytes(-2.0f).toArray[Byte]
     withFixedSizeBinaryRoot("float16", bytes.length, bytes) { root =>
       val err = intercept[IllegalArgumentException] {
         ArrowConverter.arrowToInternalRow(

@@ -1,0 +1,135 @@
+# syntax=docker/dockerfile:1.4
+
+FROM --platform=linux/amd64 eclipse-temurin:8-jdk-jammy AS build-base
+
+ARG GIT_BRANCH=databricks-15.4
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    SPARK_MILVUS_BUILD_PROFILE=databricks-15.4 \
+    GIT_BRANCH=${GIT_BRANCH} \
+    SBT_OPTS="-Xms1g -Xmx6g -Xss4m -XX:+UseG1GC"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    autoconf \
+    automake \
+    bash \
+    binutils \
+    ca-certificates \
+    ccache \
+    clang-14 \
+    curl \
+    file \
+    g++ \
+    gcc \
+    git \
+    libaio-dev \
+    libclang-14-dev \
+    libssl-dev \
+    libtool \
+    make \
+    patchelf \
+    pkg-config \
+    python3 \
+    python3-pip \
+    unzip \
+    wget \
+    zip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN wget -qO- "https://cmake.org/files/v3.27/cmake-3.27.5-linux-x86_64.tar.gz" \
+    | tar --strip-components=1 -xz -C /usr/local \
+    && pip3 install --no-cache-dir conan==2.25.1
+
+RUN curl -fsSL \
+      https://github.com/sbt/sbt/releases/download/v1.11.1/sbt-1.11.1.tgz \
+    | tar -xz -C /opt \
+    && ln -s /opt/sbt/bin/sbt /usr/local/bin/sbt
+
+RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain stable
+
+ENV CCACHE_DIR=/root/.ccache \
+    LIBCLANG_PATH=/usr/lib/llvm-14/lib \
+    PATH=/root/.cargo/bin:/usr/lib/ccache:${PATH}
+
+WORKDIR /workspace
+COPY . .
+
+RUN test "$(uname -m)" = "x86_64" \
+    && test "$(java -XshowSettings:properties -version 2>&1 \
+      | sed -n 's/^[[:space:]]*java.specification.version = //p')" = "1.8"
+
+FROM build-base AS source-check
+
+RUN --mount=type=cache,target=/root/.ivy2 \
+    --mount=type=cache,target=/root/.sbt \
+    --mount=type=cache,target=/root/.cache/coursier \
+    sbt -batch clean compile Test/compile
+
+FROM source-check AS builder
+
+RUN --mount=type=cache,target=/root/.conan2 \
+    --mount=type=cache,target=/root/.ccache \
+    --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    conan profile detect --force \
+    && conan remote add --force default-conan-local2 \
+       https://milvus01.jfrog.io/artifactory/api/conan/default-conan-local2 \
+    && conan download \
+       'libavrocpp/1.12.1.1@milvus/dev#cde7bb587a29f6f233bae7e18b71815d' \
+       -r default-conan-local2 --only-recipe \
+    && avro_recipe="$(conan cache path \
+       'libavrocpp/1.12.1.1@milvus/dev#cde7bb587a29f6f233bae7e18b71815d')" \
+    && sed -i 's#https://dlcdn.apache.org/avro/#https://archive.apache.org/dist/avro/#' \
+       "$avro_recipe/conandata.yml" \
+    && cd milvus-storage/cpp \
+    && make java-lib USE_ASAN=False WITH_FIU=False
+
+RUN native_dir=src/main/resources/native/linux-x86_64 \
+    && build_dir=milvus-storage/cpp/build/Release \
+    && mkdir -p "$native_dir" \
+    && cp "$build_dir/libmilvus-storage.so" "$native_dir/" \
+    && cp "$build_dir/libmilvus-storage-jni.so" "$native_dir/" \
+    && for runtime_lib in libaio.so.1 libatomic.so.1 libgomp.so.1; do \
+         cp -L "/usr/lib/x86_64-linux-gnu/$runtime_lib" "$native_dir/"; \
+       done \
+    && find "$build_dir/libs" -maxdepth 1 \( -type f -o -type l \) \
+       \( -name '*.so' -o -name '*.so.*' \) \
+       -exec cp -L {} "$native_dir/" \; \
+    && for directory in ossl-modules engines-3; do \
+         if [ -d "$build_dir/libs/$directory" ]; then \
+           mkdir -p "$native_dir/$directory"; \
+           cp -rL "$build_dir/libs/$directory/." "$native_dir/$directory/"; \
+         fi; \
+       done \
+    && license_dir=src/main/resources/META-INF/native-licenses \
+    && mkdir -p "$license_dir" \
+    && cp /usr/share/doc/libaio1/copyright \
+       "$license_dir/libaio1.copyright" \
+    && cp -L /usr/share/doc/libgomp1/copyright \
+       "$license_dir/gcc-runtime.copyright" \
+    && milvus-storage/java/patch_native_runpath.sh "$native_dir" \
+    && milvus-storage/java/verify_native_dependencies.sh \
+       "$native_dir/libmilvus-storage-jni.so"
+
+RUN --mount=type=cache,target=/root/.ivy2 \
+    --mount=type=cache,target=/root/.sbt \
+    --mount=type=cache,target=/root/.cache/coursier \
+    sbt -batch \
+      "testOnly com.zilliz.spark.connector.MilvusClientHttpTest com.zilliz.spark.connector.sources.MilvusScanClientSnapshotTest com.zilliz.spark.connector.read.BackupMetaReaderTest com.zilliz.spark.connector.read.MilvusDeltaLogReaderTest com.zilliz.spark.connector.read.MilvusLoonPartitionReaderTest com.zilliz.spark.connector.read.MilvusPackedV2PartitionReaderTest com.zilliz.spark.connector.loon.MilvusStorageFFITest com.zilliz.spark.connector.loon.MilvusStorageMultiFileGroupTest"
+
+RUN --mount=type=cache,target=/root/.ivy2 \
+    --mount=type=cache,target=/root/.sbt \
+    --mount=type=cache,target=/root/.cache/coursier \
+    sbt -batch assembly \
+    && mkdir -p /output \
+    && cp target/scala-2.12/*-assembly-*.jar \
+       /output/spark-connector-databricks-15.4-lts-amd64.jar \
+    && scripts/verify_databricks_15_4_jar.sh \
+       /output/spark-connector-databricks-15.4-lts-amd64.jar \
+    && cd /output \
+    && sha256sum spark-connector-databricks-15.4-lts-amd64.jar \
+       > spark-connector-databricks-15.4-lts-amd64.jar.sha256
+
+FROM scratch AS artifact
+COPY --from=builder /output/ /

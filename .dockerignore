@@ -1,0 +1,9 @@
+.worktrees
+.DS_Store
+dist
+target
+project/target
+milvus-storage/cpp/build
+milvus-storage/java/native
+milvus-storage/java/target
+src/main/resources/native

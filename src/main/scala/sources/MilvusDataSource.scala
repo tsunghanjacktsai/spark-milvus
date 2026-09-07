@@ -910,8 +910,6 @@ object MilvusScan extends Logging {
   private val MaxClientSnapshotCompactionProtectionSeconds =
     7L * 24L * 60L * 60L
   private val MaxGeneratedSnapshotNameLength = 255
-  private val DefaultAwsCredentialsProvider =
-    "software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider"
   private val SimpleAwsCredentialsProvider =
     "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
 
@@ -1632,10 +1630,8 @@ object MilvusScan extends Logging {
       if (useIam) {
         conf.unset(s"$prefix.access.key")
         conf.unset(s"$prefix.secret.key")
-        conf.set(
-          s"$prefix.aws.credentials.provider",
-          DefaultAwsCredentialsProvider
-        )
+        // Hadoop 3.3 and 3.4 use different AWS SDK provider interfaces.
+        // Preserve the credential chain selected by the Spark runtime.
       } else {
         setIfDefined(s"$prefix.access.key", accessKey)
         setIfDefined(s"$prefix.secret.key", secretKey)

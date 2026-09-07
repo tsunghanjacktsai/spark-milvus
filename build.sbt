@@ -1,5 +1,5 @@
-import scala.sys.process.Process
 import scala.io.Source
+import scala.sys.process.Process
 
 import xerial.sbt.Sonatype._
 
@@ -11,10 +11,13 @@ credentials += {
   val credFile = Path.userHome / ".sbt" / "sonatype_central_credentials"
   if (credFile.exists) {
     val lines = Source.fromFile(credFile).getLines().toList
-    val props = lines.map { line =>
-      val parts = line.split("=", 2)
-      if (parts.length == 2) Some(parts(0).trim -> parts(1).trim) else None
-    }.flatten.toMap
+    val props = lines
+      .map { line =>
+        val parts = line.split("=", 2)
+        if (parts.length == 2) Some(parts(0).trim -> parts(1).trim) else None
+      }
+      .flatten
+      .toMap
 
     Credentials(
       "Sonatype Nexus Repository Manager",
@@ -29,11 +32,39 @@ credentials += {
 
 ThisBuild / organizationName := "zilliz"
 ThisBuild / organizationHomepage := Some(url("https://zilliz.com/"))
-// For cross-compiling (if applicable)
-// crossScalaVersions := Seq("2.12.x", "2.13.x")
-ThisBuild / scalaVersion := "2.13.16"
+ThisBuild / scalaVersion := BuildProfile.scalaVersion
 ThisBuild / description := "Milvus Spark Connector to use in Spark ETLs to populate a Milvus vector database."
 ThisBuild / versionScheme := Some("early-semver")
+
+lazy val javaSpecificationVersion = System.getProperty(
+  "java.specification.version",
+  ""
+)
+lazy val databricksJavacOptions =
+  if (!BuildProfile.isDatabricks154) Seq.empty
+  else if (javaSpecificationVersion == "1.8")
+    Seq("-source", "8", "-target", "8")
+  else Seq("--release", "8")
+lazy val databricksScalacOptions =
+  if (!BuildProfile.isDatabricks154) Seq.empty
+  else if (javaSpecificationVersion == "1.8") Seq("-target:jvm-1.8")
+  else Seq("-release:8")
+lazy val moduleOpenOptions =
+  if (BuildProfile.isDatabricks154) Seq.empty
+  else
+    Seq(
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/sun.security.action=ALL-UNNAMED"
+    )
+
+def nativeLibraryDirectory(base: File): File = {
+  val nativeRoot = base / "src" / "main" / "resources" / "native"
+  if (BuildProfile.isDatabricks154) nativeRoot / "linux-x86_64"
+  else nativeRoot
+}
 
 // Remove all additional repository other than Maven Central from POM
 ThisBuild / pomIncludeRepository := { _ => false }
@@ -73,15 +104,18 @@ ThisBuild / developers := List(
 )
 
 lazy val arch = System.getProperty("os.arch") match {
-  case "amd64" | "x86_64" => "amd64"
+  case "amd64" | "x86_64"  => "amd64"
   case "aarch64" | "arm64" => "arm64"
-  case other => other
+  case other               => other
 }
 
 // Get git branch name from env var (for Docker builds) or git command, sanitize for Maven version
 lazy val gitBranch = {
-  val branch = sys.env.getOrElse("GIT_BRANCH",
-    scala.util.Try(Process("git rev-parse --abbrev-ref HEAD").!!.trim).getOrElse("unknown")
+  val branch = sys.env.getOrElse(
+    "GIT_BRANCH",
+    scala.util
+      .Try(Process("git rev-parse --abbrev-ref HEAD").!!.trim)
+      .getOrElse("unknown")
   )
   // Replace invalid characters for Maven version (only alphanumeric, dash, dot, underscore allowed)
   branch.replaceAll("[^a-zA-Z0-9._-]", "-")
@@ -96,6 +130,8 @@ lazy val root = (project in file("."))
     Compile / compile / parallelExecution := true,
     version := s"${gitBranch}-${arch}-SNAPSHOT",
     organization := "com.zilliz",
+    Compile / javacOptions ++= databricksJavacOptions,
+    Compile / scalacOptions ++= databricksScalacOptions,
 
     // Disable Scaladoc and sources jar for publish (not needed, speeds up build)
     Compile / packageDoc / publishArtifact := false,
@@ -109,17 +145,23 @@ lazy val root = (project in file("."))
     Test / logBuffered := false,
 
     // Test timeout - 10 seconds per test to avoid hanging
-    Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oDF", "-W", "10", "10"),
+    Test / testOptions += Tests.Argument(
+      TestFrameworks.ScalaTest,
+      "-oDF",
+      "-W",
+      "10",
+      "10"
+    ),
 
     // JVM options for run
     run / javaOptions ++= Seq(
       "-Xss2m",
-      "-Djava.library.path=.",
-      "--add-opens=java.base/java.nio=ALL-UNNAMED"
-    ),
-
+      "-Djava.library.path=."
+    ) ++ moduleOpenOptions.take(1),
     run / envVars := Map(
-      "LD_PRELOAD" -> (baseDirectory.value / s"src/main/resources/native/libmilvus-storage.so").getAbsolutePath
+      "LD_PRELOAD" -> (nativeLibraryDirectory(
+        baseDirectory.value
+      ) / "libmilvus-storage.so").getAbsolutePath
     ),
 
     // Include test dependencies in run classpath for example applications
@@ -129,23 +171,36 @@ lazy val root = (project in file("."))
     Test / javaOptions ++= Seq(
       "-Xss2m",
       "-Xmx4g",
-      s"-Djava.library.path=${(baseDirectory.value / "src/main/resources/native").getAbsolutePath}",
+      s"-Djava.library.path=${nativeLibraryDirectory(baseDirectory.value).getAbsolutePath}",
       "-Dlog4j2.configurationFile=log4j2.properties",
-      "-Dlog4j2.debug=false",
-      "--add-opens=java.base/java.nio=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang=ALL-UNNAMED",
-      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
-      "--add-opens=java.base/java.util=ALL-UNNAMED",
-      "--add-opens=java.base/sun.security.action=ALL-UNNAMED"
-    ),
-
+      "-Dlog4j2.debug=false"
+    ) ++ moduleOpenOptions,
     Test / envVars := Map(
-      "LD_LIBRARY_PATH" -> (baseDirectory.value / "src/main/resources/native").getAbsolutePath
+      "LD_LIBRARY_PATH" -> nativeLibraryDirectory(
+        baseDirectory.value
+      ).getAbsolutePath
     ),
 
-    // Add milvus-storage JNI library as unmanaged dependency
-    Compile / unmanagedJars += baseDirectory.value / "milvus-storage" / "java" / "target" / "scala-2.13" / "milvus-storage-jni_2.13-0.1.0-SNAPSHOT.jar",
-    Test / unmanagedJars += baseDirectory.value / "milvus-storage" / "java" / "target" / "scala-2.13" / "milvus-storage-jni_2.13-0.1.0-SNAPSHOT.jar",
+    // DBR 15.4 uses Scala 2.12, so compile the pinned JNI binding sources with
+    // the connector instead of consuming the default Scala 2.13 binding JAR.
+    Compile / unmanagedSourceDirectories ++= {
+      if (BuildProfile.isDatabricks154) {
+        Seq(
+          baseDirectory.value / "milvus-storage" / "java" / "src" / "main" / "scala",
+          baseDirectory.value / "milvus-storage" / "java" / "src" / "main" / "java"
+        )
+      } else Seq.empty
+    },
+    Compile / unmanagedJars ++= {
+      if (BuildProfile.isDatabricks154) Seq.empty
+      else {
+        val scalaBinary = scalaBinaryVersion.value
+        Seq(
+          baseDirectory.value / "milvus-storage" / "java" / "target" / s"scala-$scalaBinary" / s"milvus-storage-jni_$scalaBinary-0.1.0-SNAPSHOT.jar"
+        )
+      }
+    },
+    Test / unmanagedJars ++= (Compile / unmanagedJars).value,
 
     // 老 log binding (slf4j-log4j12 / reload4j / log4j 1.x) 与 spark 的 log4j2 冲突，
     // 全局排除掉。
@@ -163,7 +218,10 @@ lazy val root = (project in file("."))
       val cp = (assembly / fullClasspath).value
       cp.filter { f =>
         val n = f.data.getName
-        n.startsWith("slf4j-api-")
+        n.startsWith("slf4j-api-") ||
+        (BuildProfile.isDatabricks154 && n.startsWith(
+          "scala-collection-compat_2.12-"
+        ))
       }
     },
     libraryDependencies ++= Seq(
@@ -183,9 +241,6 @@ lazy val root = (project in file("."))
       hadoopCommon,
       hadoopAws,
       hadoopAliyun,
-      awsSdkS3,
-      awsSdkS3Transfer,
-      awsSdkCore,
       jacksonScala,
       jacksonDatabind,
       arrowFormat,
@@ -193,7 +248,8 @@ lazy val root = (project in file("."))
       arrowMemoryCore,
       arrowMemoryNetty,
       arrowCData
-    ),
+    ) ++ profileDependencies ++ awsSdkDependencies,
+    dependencyOverrides ++= profileDependencyOverrides,
     Compile / PB.protoSources += baseDirectory.value / "milvus-proto/proto",
     Compile / PB.targets := Seq(
       scalapb.gen(grpc = true) -> (Compile / sourceManaged).value / "scalapb"
@@ -244,10 +300,12 @@ assembly / assemblyMergeStrategy := {
   case x if x.endsWith("module-info.class") =>
     MergeStrategy.discard
   // Handle hadoop package-info conflicts
-  case PathList("org", "apache", "hadoop", xs @ _*) if xs.last == "package-info.class" =>
+  case PathList("org", "apache", "hadoop", xs @ _*)
+      if xs.last == "package-info.class" =>
     MergeStrategy.first
   // Handle AWS SDK VersionInfo conflicts
-  case PathList("software", "amazon", "awssdk", xs @ _*) if xs.last == "VersionInfo.class" =>
+  case PathList("software", "amazon", "awssdk", xs @ _*)
+      if xs.last == "VersionInfo.class" =>
     MergeStrategy.first
   // Default case
   case x =>

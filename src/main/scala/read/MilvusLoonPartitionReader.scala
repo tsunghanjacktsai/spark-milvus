@@ -28,7 +28,11 @@ import com.zilliz.spark.connector.{FloatConverter, MilvusOption}
 import com.zilliz.spark.connector.filter.VectorBruteForceSearch
 import com.zilliz.spark.connector.loon.Properties
 import com.zilliz.spark.connector.serde.ArrowConverter
-import io.milvus.grpc.schema.{CollectionSchema, DataType, FieldSchema}
+import io.milvus.grpc.schema.{
+  CollectionSchema => MilvusCollectionSchema,
+  DataType,
+  FieldSchema
+}
 import io.milvus.storage.{
   ArrowUtils,
   LatestColumnGroupsResult,
@@ -50,7 +54,7 @@ object MilvusLoonPartitionReader {
   )
 
   private[read] def buildFieldNameToId(
-      milvusSchema: CollectionSchema
+      milvusSchema: MilvusCollectionSchema
   ): Map[String, Long] = {
     val userFieldNames = milvusSchema.fields.map(_.name).toSet
     val systemFields = SystemFieldAliases.filterNot { case (alias, _) =>
@@ -60,6 +64,20 @@ object MilvusLoonPartitionReader {
       field.name -> field.fieldID
     }.toMap
     systemFields ++ userFields
+  }
+
+  private[read] def compareByteArrays(
+      left: Array[Byte],
+      right: Array[Byte]
+  ): Int = {
+    val commonLength = math.min(left.length, right.length)
+    var index = 0
+    while (index < commonLength) {
+      val comparison = java.lang.Byte.compare(left(index), right(index))
+      if (comparison != 0) return comparison
+      index += 1
+    }
+    java.lang.Integer.compare(left.length, right.length)
   }
 
   private case class VectorSearchResult(
@@ -132,7 +150,7 @@ object MilvusLoonPartitionReader {
 class MilvusLoonPartitionReader(
     schema: StructType,
     manifestPath: String, // Path to manifest in S3/MinIO
-    milvusSchema: CollectionSchema,
+    milvusSchema: MilvusCollectionSchema,
     milvusOption: MilvusOption,
     optionsMap: Map[String, String],
     topK: Option[Int] = None,
@@ -814,10 +832,11 @@ class MilvusLoonPartitionReader(
       case (rv: Boolean, fv: Boolean) => rv.compareTo(fv)
       case (rv: String, fv: String)   => rv.compareTo(fv)
       case (rv: Array[Byte], fv: Array[Byte]) =>
-        java.util.Arrays.compare(rv, fv)
+        MilvusLoonPartitionReader.compareByteArrays(rv, fv)
       case _ =>
         // For other types, try toString comparison as fallback
         rowValue.toString.compareTo(filterValue.toString)
     }
   }
+
 }

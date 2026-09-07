@@ -10,7 +10,11 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import com.zilliz.spark.connector.serde.ArrowConverter
 import com.zilliz.spark.connector.FloatConverter
-import io.milvus.grpc.schema.{CollectionSchema, DataType, FieldSchema}
+import io.milvus.grpc.schema.{
+  CollectionSchema => MilvusCollectionSchema,
+  DataType,
+  FieldSchema
+}
 
 class MilvusLoonPartitionReaderTest extends AnyFunSuite {
   test("delete filtering uses field-id column name for timestamp") {
@@ -18,7 +22,7 @@ class MilvusLoonPartitionReaderTest extends AnyFunSuite {
   }
 
   test("buildFieldNameToId exposes non-conflicting system aliases") {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(name = "pk", fieldID = 100, dataType = DataType.Int64)
       )
@@ -35,7 +39,7 @@ class MilvusLoonPartitionReaderTest extends AnyFunSuite {
   }
 
   test("buildFieldNameToId preserves user fields that use system alias names") {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(name = "RowID", fieldID = 100, dataType = DataType.Int64),
         FieldSchema(
@@ -54,6 +58,27 @@ class MilvusLoonPartitionReaderTest extends AnyFunSuite {
     assert(mapping("rowid") == 102L)
     assert(mapping("row_id") == 0L)
     assert(mapping("timestamp") == 1L)
+  }
+
+  test("compareByteArrays preserves Arrays.compare ordering on Java 8") {
+    assert(
+      MilvusLoonPartitionReader.compareByteArrays(
+        Array[Byte](1, 2),
+        Array[Byte](1, 2)
+      ) == 0
+    )
+    assert(
+      MilvusLoonPartitionReader.compareByteArrays(
+        Array[Byte](1, 2),
+        Array[Byte](1, 2, 0)
+      ) < 0
+    )
+    assert(
+      MilvusLoonPartitionReader.compareByteArrays(
+        Array[Byte](-1),
+        Array[Byte](0)
+      ) < 0
+    )
   }
 
   test("validateVectorSearchField rejects BinaryVector dense search") {
@@ -114,8 +139,8 @@ class MilvusLoonPartitionReaderTest extends AnyFunSuite {
         )
         .build()
     )
-    val bytes = FloatConverter.toFloat16Bytes(1.5f).toArray ++
-      FloatConverter.toFloat16Bytes(-2.0f).toArray
+    val bytes = FloatConverter.toFloat16Bytes(1.5f).toArray[Byte] ++
+      FloatConverter.toFloat16Bytes(-2.0f).toArray[Byte]
 
     val decoded =
       MilvusLoonPartitionReader.decodeBinaryTypeVectorForSearch(bytes, field)
@@ -135,8 +160,8 @@ class MilvusLoonPartitionReaderTest extends AnyFunSuite {
         )
         .build()
     )
-    val bytes = FloatConverter.toBFloat16Bytes(1.5f).toArray ++
-      FloatConverter.toBFloat16Bytes(-2.0f).toArray
+    val bytes = FloatConverter.toBFloat16Bytes(1.5f).toArray[Byte] ++
+      FloatConverter.toBFloat16Bytes(-2.0f).toArray[Byte]
 
     val decoded =
       MilvusLoonPartitionReader.decodeBinaryTypeVectorForSearch(bytes, field)

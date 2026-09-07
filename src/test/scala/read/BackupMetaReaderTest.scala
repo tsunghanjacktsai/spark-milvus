@@ -16,7 +16,10 @@ import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
-import io.milvus.grpc.schema.{CollectionSchema, DataType}
+import io.milvus.grpc.schema.{
+  CollectionSchema => MilvusCollectionSchema,
+  DataType
+}
 
 /** Tests for [[BackupMetaReader]] — parses milvus-backup's `full_meta.json` and
   * maps it to the packed-V2 read-path objects.
@@ -159,9 +162,8 @@ class BackupMetaReaderTest extends AnyFunSuite with Matchers {
     writeParquetAt(
       Paths.get(seg.toString, "103", "2"),
       groupASchema,
-      List(
-        f =>
-          f.newGroup().append("pk", 3L).append("row_id", 12L).append("ts", 102L)
+      List(f =>
+        f.newGroup().append("pk", 3L).append("row_id", 12L).append("ts", 102L)
       )
     )
     writeParquetAt(
@@ -530,7 +532,7 @@ class BackupMetaReaderTest extends AnyFunSuite with Matchers {
     val meta = BackupMetaReader.parse(json).getOrElse(fail("expected Right"))
     val schema = meta.collectionBackups.head.schema.get
 
-    val parsed = CollectionSchema.parseFrom(
+    val parsed = MilvusCollectionSchema.parseFrom(
       BackupMetaReader.toProtobufSchemaBytes(schema)
     )
     parsed.name shouldBe "demo"

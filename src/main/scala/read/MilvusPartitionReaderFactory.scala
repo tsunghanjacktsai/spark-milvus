@@ -12,7 +12,7 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.unsafe.types.UTF8String
 
 import com.zilliz.spark.connector.MilvusOption
-import io.milvus.grpc.schema.CollectionSchema
+import io.milvus.grpc.schema.{CollectionSchema => MilvusCollectionSchema}
 
 object MilvusPartitionReaderFactory {
   private[read] def requestedExtraColumns(
@@ -75,7 +75,8 @@ class MilvusPartitionReaderFactory(
         })
 
         // Deserialize the protobuf schema
-        val milvusSchema = CollectionSchema.parseFrom(p.milvusSchemaBytes)
+        val milvusSchema =
+          MilvusCollectionSchema.parseFrom(p.milvusSchemaBytes)
 
         // Create MilvusLoonPartitionReader directly
         val underlyingReader = new MilvusLoonPartitionReader(
@@ -142,7 +143,8 @@ class MilvusPartitionReaderFactory(
           isMetadataExtraField(field.name)
         })
 
-        val milvusSchema = CollectionSchema.parseFrom(p.milvusSchemaBytes)
+        val milvusSchema =
+          MilvusCollectionSchema.parseFrom(p.milvusSchemaBytes)
 
         val inheritedDeletePlan = p.inheritedDeletePlanPartitionId
           .map(partitionId =>

@@ -21,7 +21,11 @@ import org.apache.spark.unsafe.types.UTF8String
 import com.zilliz.spark.connector.loon.Properties
 import com.zilliz.spark.connector.serde.ArrowConverter
 import com.zilliz.spark.connector.MilvusOption
-import io.milvus.grpc.schema.{CollectionSchema, DataType, FieldSchema}
+import io.milvus.grpc.schema.{
+  CollectionSchema => MilvusCollectionSchema,
+  DataType,
+  FieldSchema
+}
 import io.milvus.storage.{
   ArrowUtils,
   MilvusStorageColumnGroups,
@@ -48,7 +52,7 @@ object MilvusPackedV2PartitionReader {
   )
 
   private[read] def buildFieldMappings(
-      milvusSchema: CollectionSchema
+      milvusSchema: MilvusCollectionSchema
   ): FieldMappings = {
     val systemFields = Map(0L -> "RowID", 1L -> "Timestamp")
     val userFields = milvusSchema.fields.map(f => f.fieldID -> f.name).toMap
@@ -191,7 +195,7 @@ object MilvusPackedV2PartitionReader {
 class MilvusPackedV2PartitionReader(
     schema: StructType,
     columnGroups: Seq[V2ColumnGroup],
-    milvusSchema: CollectionSchema,
+    milvusSchema: MilvusCollectionSchema,
     milvusOption: MilvusOption,
     neededColumnFieldIds: Seq[Long],
     applyDeletes: Boolean,

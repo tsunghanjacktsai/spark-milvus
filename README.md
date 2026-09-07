@@ -102,6 +102,25 @@ sbt assembly
 
 You can also build the connector using Docker, which handles all dependencies automatically including the native milvus-storage library.
 
+#### Databricks Runtime 15.4 LTS
+
+Use the dedicated build for the Linux x86_64 DBR 15.4 runtime line (Spark
+3.5.0, Scala 2.12.15, and Java 8):
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  --target artifact \
+  --output type=local,dest=dist/databricks-15.4 \
+  -f Dockerfile.databricks-15.4 .
+```
+
+The build compiles and tests the connector and its native JNI libraries, then
+writes `spark-connector-databricks-15.4-lts-amd64.jar` and the corresponding
+SHA-256 file to `dist/databricks-15.4`.
+
+#### Default Runtime
+
 **Build the Docker image:**
 
 ```bash

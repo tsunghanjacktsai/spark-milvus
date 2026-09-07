@@ -78,7 +78,7 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
     val parent = new RootAllocator(Long.MaxValue)
     try {
       val alloc = parent.newChildAllocator("test", 0, Long.MaxValue)
-      val schema = new Schema(java.util.List.of(field))
+      val schema = new Schema(java.util.Arrays.asList(field))
       val root = VectorSchemaRoot.create(schema, alloc)
 
       populate(root)
@@ -431,7 +431,11 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
       null
     )
     val field =
-      new Field("vec", FieldType.nullable(listType), java.util.List.of(child))
+      new Field(
+        "vec",
+        FieldType.nullable(listType),
+        java.util.Arrays.asList(child)
+      )
 
     val rows: Seq[Array[Float]] = Seq(
       Array(1.0f, 2.0f, 3.0f, 4.0f),
@@ -485,7 +489,11 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
       null
     )
     val field =
-      new Field("xs", FieldType.nullable(listType), java.util.List.of(child))
+      new Field(
+        "xs",
+        FieldType.nullable(listType),
+        java.util.Arrays.asList(child)
+      )
 
     val rows: Seq[Seq[Int]] =
       Seq(Seq(1, 2, 3), Seq.empty, null, Seq(42), Seq(-1, -2, -3, -4, -5))
@@ -538,7 +546,11 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
     val child =
       new Field("$data$", FieldType.nullable(new ArrowType.Utf8()), null)
     val field =
-      new Field("ls", FieldType.nullable(listType), java.util.List.of(child))
+      new Field(
+        "ls",
+        FieldType.nullable(listType),
+        java.util.Arrays.asList(child)
+      )
 
     val rows: Seq[Seq[String]] = Seq(
       Seq("a", "bb", "ccc"),
@@ -592,7 +604,7 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
   test(
     "Struct<Int64, Utf8>: nested fields preserve buffers independently"
   ) {
-    val children = java.util.List.of(
+    val children = java.util.Arrays.asList(
       new Field("k", FieldType.notNullable(new ArrowType.Int(64, true)), null),
       new Field("v", FieldType.nullable(new ArrowType.Utf8()), null)
     )
@@ -653,7 +665,7 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
       val alloc = parent.newChildAllocator("multi", 0, Long.MaxValue)
       val field =
         new Field("v", FieldType.nullable(new ArrowType.Int(64, true)), null)
-      val schema = new Schema(java.util.List.of(field))
+      val schema = new Schema(java.util.Arrays.asList(field))
 
       val numBatches = 20
       val rowsPerBatch = 32
@@ -715,7 +727,7 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
       val alloc = parent.newChildAllocator("concurrent", 0, Long.MaxValue)
       val field =
         new Field("v", FieldType.nullable(new ArrowType.Int(64, true)), null)
-      val schema = new Schema(java.util.List.of(field))
+      val schema = new Schema(java.util.Arrays.asList(field))
 
       val numBatches = 8
       val rowsPerBatch = 16
@@ -774,7 +786,7 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
   test(
     "combined schema with all backfill-relevant types round-trips in one export"
   ) {
-    val fields = java.util.List.of(
+    val fields = java.util.Arrays.asList(
       new Field(
         "pk",
         FieldType.notNullable(new ArrowType.Int(64, true)),
@@ -795,7 +807,7 @@ class ArrowCDataRefcountTest extends AnyFunSuite with Matchers {
       new Field(
         "vec",
         FieldType.nullable(new ArrowType.FixedSizeList(2)),
-        java.util.List.of(
+        java.util.Arrays.asList(
           new Field(
             "$data$",
             FieldType.nullable(

@@ -605,12 +605,15 @@ class MilvusScanClientSnapshotTest extends AnyFunSuite with BeforeAndAfterEach {
     )
   }
 
-  test("buildSnapshotHadoopConf maps IAM mode without static credentials") {
+  test("IAM mode clears static credentials and preserves runtime provider") {
     val rawOptions = new ju.HashMap[String, String]()
     rawOptions.put(Properties.FsConfig.FsBucketName, "connector-bucket")
     rawOptions.put(Properties.FsConfig.FsUseIam, "true")
     rawOptions.put(Properties.FsConfig.FsAccessKeyId, "ak")
     rawOptions.put(Properties.FsConfig.FsAccessKeyValue, "sk")
+
+    val runtimeCredentialsProvider =
+      new Configuration().get("fs.s3a.aws.credentials.provider")
 
     val conf = scanWithOptions(rawOptions).buildSnapshotHadoopConf(
       "s3a://connector-bucket/files/snapshots/1/metadata/2.json"
@@ -619,14 +622,13 @@ class MilvusScanClientSnapshotTest extends AnyFunSuite with BeforeAndAfterEach {
     assert(conf.get("fs.s3a.access.key") == null)
     assert(conf.get("fs.s3a.secret.key") == null)
     assert(
-      conf.get("fs.s3a.aws.credentials.provider") ==
-        "software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider"
+      conf.get("fs.s3a.aws.credentials.provider") == runtimeCredentialsProvider
     )
     assert(conf.get("fs.s3a.bucket.connector-bucket.access.key") == null)
     assert(conf.get("fs.s3a.bucket.connector-bucket.secret.key") == null)
     assert(
       conf.get("fs.s3a.bucket.connector-bucket.aws.credentials.provider") ==
-        "software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider"
+        null
     )
   }
 

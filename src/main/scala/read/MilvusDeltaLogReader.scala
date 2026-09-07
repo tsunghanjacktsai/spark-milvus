@@ -15,7 +15,11 @@ import org.apache.parquet.hadoop.ParquetReader
 import org.apache.parquet.io.{InputFile, SeekableInputStream}
 import org.apache.spark.internal.Logging
 
-import io.milvus.grpc.schema.{CollectionSchema, DataType, FieldSchema}
+import io.milvus.grpc.schema.{
+  CollectionSchema => MilvusCollectionSchema,
+  DataType,
+  FieldSchema
+}
 
 object MilvusDeltaLogReader extends Logging {
   private val MagicNumber = 0xfffabc
@@ -31,7 +35,7 @@ object MilvusDeltaLogReader extends Logging {
 
   def loadDeletePlansBySegment(
       segments: Seq[V2SegmentInfo],
-      milvusSchema: CollectionSchema,
+      milvusSchema: MilvusCollectionSchema,
       bucket: String,
       hadoopConf: Configuration
   ): Either[Throwable, Map[Long, MilvusDeletePlan]] = {
@@ -429,7 +433,9 @@ object MilvusDeltaLogReader extends Logging {
     ParsedHeader(typeCode, eventLength)
   }
 
-  private def primaryKeyField(milvusSchema: CollectionSchema): FieldSchema = {
+  private def primaryKeyField(
+      milvusSchema: MilvusCollectionSchema
+  ): FieldSchema = {
     val pkField = milvusSchema.fields.find(_.isPrimaryKey).getOrElse {
       throw new IllegalArgumentException("No primary key field found in schema")
     }

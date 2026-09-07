@@ -1,10 +1,8 @@
 package com.zilliz.spark.connector
 
-import java.io.File
-import java.net.http.{HttpClient, HttpRequest, HttpResponse}
-import java.net.URI
+import java.io.{File, InputStream, OutputStreamWriter}
+import java.net.{HttpURLConnection, URI}
 import java.nio.charset.StandardCharsets
-import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.Base64
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -165,14 +163,6 @@ class MilvusClient(params: MilvusConnectionParams) extends Logging {
 
   private def rpcStub: MilvusServiceGrpc.MilvusServiceBlockingStub =
     stub.withDeadlineAfter(10, TimeUnit.SECONDS)
-
-  private lazy val httpClient: HttpClient = {
-    HttpClient
-      .newBuilder()
-      .version(HttpClient.Version.HTTP_2)
-      .connectTimeout(Duration.ofSeconds(10))
-      .build()
-  }
 
   def getConnectionMetadataInterceptor(): ClientInterceptor = {
     val metaData = new Metadata()
@@ -800,27 +790,45 @@ class MilvusClient(params: MilvusConnectionParams) extends Logging {
       )
       val jsonString = GetSegmentsInfoReq.toJson(req)
 
-      val request = HttpRequest
-        .newBuilder()
-        .uri(URI.create(params.uri + MilvusClient.segmentsUrl))
-        .header("Content-Type", "application/json")
-        .header(
-          "Authorization",
-          "Basic " + Base64.getEncoder.encodeToString(
-            params.token.getBytes(StandardCharsets.UTF_8)
-          )
+      val connection = URI
+        .create(params.uri + MilvusClient.segmentsUrl)
+        .toURL
+        .openConnection()
+        .asInstanceOf[HttpURLConnection]
+      connection.setRequestMethod("POST")
+      connection.setConnectTimeout(10000)
+      connection.setReadTimeout(10000)
+      connection.setDoOutput(true)
+      connection.setRequestProperty("Content-Type", "application/json")
+      connection.setRequestProperty(
+        "Authorization",
+        "Basic " + Base64.getEncoder.encodeToString(
+          params.token.getBytes(StandardCharsets.UTF_8)
         )
-        .POST(HttpRequest.BodyPublishers.ofString(jsonString))
-        .build();
+      )
 
-      val response =
-        httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-      if (response.statusCode() != 200) {
+      val (statusCode, responseBody) =
+        try {
+          val writer = new OutputStreamWriter(
+            connection.getOutputStream,
+            StandardCharsets.UTF_8
+          )
+          try writer.write(jsonString)
+          finally writer.close()
+
+          val responseCode = connection.getResponseCode
+          val stream =
+            if (responseCode == HttpURLConnection.HTTP_OK)
+              connection.getInputStream
+            else connection.getErrorStream
+          responseCode -> readUtf8(stream)
+        } finally connection.disconnect()
+
+      if (statusCode != HttpURLConnection.HTTP_OK) {
         return Failure(
-          new Exception(s"Failed to get segment info: ${response.body()}")
+          new Exception(s"Failed to get segment info: $responseBody")
         )
       }
-      val responseBody = response.body()
       val responseJson = MilvusClient.mapper.readTree(responseBody)
       if (responseJson.has("code") && responseJson.get("code").asInt() != 0) {
         return Failure(
@@ -878,6 +886,16 @@ class MilvusClient(params: MilvusConnectionParams) extends Logging {
           new Exception(s"Failed to get segment info: ${e.getMessage}")
         )
     }
+  }
+
+  private def readUtf8(stream: InputStream): String = {
+    if (stream == null) return ""
+    val source = scala.io.Source.fromInputStream(
+      stream,
+      StandardCharsets.UTF_8.name()
+    )
+    try source.mkString
+    finally source.close()
   }
 
   def getPartitionID(

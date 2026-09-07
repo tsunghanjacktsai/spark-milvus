@@ -9,13 +9,17 @@ import org.apache.spark.sql.types.{
 }
 import org.scalatest.funsuite.AnyFunSuite
 
-import io.milvus.grpc.schema.{CollectionSchema, DataType, FieldSchema}
+import io.milvus.grpc.schema.{
+  CollectionSchema => MilvusCollectionSchema,
+  DataType,
+  FieldSchema
+}
 
 class MilvusPackedV2PartitionReaderTest extends AnyFunSuite {
   test(
     "lowercase system aliases are omitted when user fields use those names"
   ) {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(name = "row_id", fieldID = 100, dataType = DataType.Int64),
         FieldSchema(
@@ -37,7 +41,7 @@ class MilvusPackedV2PartitionReaderTest extends AnyFunSuite {
   }
 
   test("system aliases are omitted when user fields use canonical names") {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(name = "RowID", fieldID = 100, dataType = DataType.Int64),
         FieldSchema(
@@ -64,7 +68,7 @@ class MilvusPackedV2PartitionReaderTest extends AnyFunSuite {
   }
 
   test("resolveNeededColumns uses exact user names before system aliases") {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(name = "RowID", fieldID = 100, dataType = DataType.Int64)
       )
@@ -92,7 +96,7 @@ class MilvusPackedV2PartitionReaderTest extends AnyFunSuite {
   test(
     "resolveNeededColumns returns empty for V2 segments without column groups"
   ) {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(name = "pk", fieldID = 100, dataType = DataType.Int64)
       )
@@ -113,7 +117,7 @@ class MilvusPackedV2PartitionReaderTest extends AnyFunSuite {
   test(
     "resolveNeededColumns fails when requested field is absent from V2 column groups"
   ) {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(name = "pk", fieldID = 100, dataType = DataType.Int64),
         FieldSchema(name = "value", fieldID = 101, dataType = DataType.Int64)
@@ -147,7 +151,7 @@ class MilvusPackedV2PartitionReaderTest extends AnyFunSuite {
   }
 
   test("resolveNeededColumns tolerates synthetic $meta column") {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(name = "pk", fieldID = 100, dataType = DataType.Int64)
       )
@@ -178,7 +182,7 @@ class MilvusPackedV2PartitionReaderTest extends AnyFunSuite {
   }
 
   test("projectedFieldIds forces PK when delete filtering is enabled") {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(
           name = "pk",
@@ -207,7 +211,7 @@ class MilvusPackedV2PartitionReaderTest extends AnyFunSuite {
   test(
     "projectedFieldIds keeps projection unchanged when delete plan is empty"
   ) {
-    val schema = CollectionSchema(
+    val schema = MilvusCollectionSchema(
       fields = Seq(
         FieldSchema(
           name = "pk",
